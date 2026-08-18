@@ -1,0 +1,111 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/home"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Settings</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true">
+  <form (ngSubmit)="save()" #settingsForm="ngForm">
+    <ion-list inset="true">
+      <ion-list-header>Account details</ion-list-header>
+
+      <ion-item>
+        <ion-input
+          label="Account number"
+          labelPlacement="stacked"
+          name="accountNumber"
+          [(ngModel)]="settings.accountNumber"
+          placeholder="e.g. 123456789"
+          required
+        ></ion-input>
+      </ion-item>
+
+      <ion-item>
+        <ion-input
+          label="Portion"
+          labelPlacement="stacked"
+          name="portion"
+          [(ngModel)]="settings.portion"
+          placeholder="e.g. Portion 4"
+        ></ion-input>
+      </ion-item>
+
+      <ion-item>
+        <ion-input
+          label="Account holder (initials and surname)"
+          labelPlacement="stacked"
+          name="accountHolder"
+          [(ngModel)]="settings.accountHolder"
+          placeholder="e.g. J Smith"
+          required
+        ></ion-input>
+      </ion-item>
+
+      <ion-item>
+        <ion-input
+          label="Contact number"
+          labelPlacement="stacked"
+          name="contactNumber"
+          type="tel"
+          [(ngModel)]="settings.contactNumber"
+          placeholder="e.g. 082 000 0000"
+        ></ion-input>
+      </ion-item>
+
+      <ion-item>
+        <ion-textarea
+          label="Physical address"
+          labelPlacement="stacked"
+          name="homeAddress"
+          [(ngModel)]="settings.homeAddress"
+          autoGrow="true"
+          placeholder="Street, suburb, city"
+        ></ion-textarea>
+      </ion-item>
+    </ion-list>
+
+    <ion-list inset="true">
+      <ion-list-header>Email</ion-list-header>
+
+      <ion-item>
+        <ion-input
+          label="Your email (recorded on the reading)"
+          labelPlacement="stacked"
+          name="submitterEmail"
+          type="email"
+          [(ngModel)]="settings.submitterEmail"
+        ></ion-input>
+      </ion-item>
+
+      <ion-item>
+        <ion-input
+          label="Recipient email"
+          labelPlacement="stacked"
+          name="recipientEmail"
+          type="email"
+          [(ngModel)]="settings.recipientEmail"
+          required
+        ></ion-input>
+      </ion-item>
+
+      <ion-item>
+        <ion-input
+          label="BCC (comma or semicolon separated, optional)"
+          labelPlacement="stacked"
+          name="bccList"
+          [(ngModel)]="settings.bccList"
+          placeholder="e.g. me@example.com, spouse@example.com"
+        ></ion-input>
+      </ion-item>
+    </ion-list>
+
+    <div class="ion-padding">
+      <ion-button expand="block" type="submit" [disabled]="settingsForm.invalid">
+        Save settings
+      </ion-button>
+    </div>
+  </form>
+</ion-content>

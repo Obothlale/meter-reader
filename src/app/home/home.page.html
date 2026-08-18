@@ -1,0 +1,94 @@
+<ion-header [translucent]="true">
+  <ion-toolbar>
+    <ion-title>Meter Readings Capture</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="goToSettings()">
+        <ion-icon slot="icon-only" name="settings-outline"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content [fullscreen]="true" class="ion-padding">
+  <ion-card *ngIf="!settingsComplete" color="warning">
+    <ion-card-content>
+      Account details aren't set up yet.
+      <a (click)="goToSettings()">Open Settings</a> to add the account number,
+      account holder and recipient email before submitting a reading.
+    </ion-card-content>
+  </ion-card>
+
+  <ion-item lines="none" class="recipient-item" *ngIf="settings?.recipientEmail as recipient">
+    <ion-label>
+      Will be sent to<br />
+      <strong>{{ recipient }}</strong>
+    </ion-label>
+  </ion-item>
+
+  <ion-list inset="true">
+    <ion-item>
+      <ion-input
+        label="Meter reading (6 digits)"
+        labelPlacement="stacked"
+        inputmode="numeric"
+        [(ngModel)]="readingText"
+        maxlength="6"
+        placeholder="e.g. 012345"
+      ></ion-input>
+    </ion-item>
+  </ion-list>
+
+  <p class="reading-preview" *ngIf="formattedReadingPreview">
+    Will be recorded as <strong>{{ formattedReadingPreview }}</strong>
+  </p>
+
+  <ion-list inset="true">
+    <ion-item lines="none">
+      <ion-label>Photo / PDF of meter</ion-label>
+    </ion-item>
+    <ion-item lines="none">
+      <div class="file-source-buttons">
+        <ion-button fill="outline" size="small" (click)="cameraInput.click()">
+          <ion-icon slot="start" name="camera-outline"></ion-icon>
+          Take photo
+        </ion-button>
+        <ion-button fill="outline" size="small" (click)="galleryInput.click()">
+          <ion-icon slot="start" name="image-outline"></ion-icon>
+          Choose file
+        </ion-button>
+      </div>
+      <input
+        type="file"
+        accept="image/*,application/pdf"
+        capture="environment"
+        (change)="onFileSelected($event)"
+        #cameraInput
+        hidden
+      />
+      <input
+        type="file"
+        accept="image/*,application/pdf"
+        (change)="onFileSelected($event)"
+        #galleryInput
+        hidden
+      />
+    </ion-item>
+  </ion-list>
+
+  <div class="preview" *ngIf="filePreviewUrl">
+    <img [src]="filePreviewUrl" alt="Selected meter photo" />
+  </div>
+  <ion-item lines="none" *ngIf="selectedFile && !filePreviewUrl">
+    <ion-icon slot="start" name="document-outline"></ion-icon>
+    <ion-label>{{ selectedFile.name }}</ion-label>
+  </ion-item>
+  <ion-item lines="none" *ngIf="selectedFile">
+    <ion-button fill="clear" size="small" (click)="clearFile()">Remove file</ion-button>
+  </ion-item>
+
+  <div class="ion-padding-top">
+    <ion-button expand="block" [disabled]="submitting" (click)="submit()">
+      Submit reading
+    </ion-button>
+  </div>
+</ion-content>
