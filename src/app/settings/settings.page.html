@@ -108,4 +108,36 @@
       </ion-button>
     </div>
   </form>
+
+  <ion-list inset="true">
+    <ion-list-header>Google Account</ion-list-header>
+
+    <ion-item lines="none" *ngIf="googleAuth.signedInEmail() as email">
+      <ion-label>
+        Signed in as<br />
+        <strong>{{ email }}</strong>
+      </ion-label>
+    </ion-item>
+    <ion-item lines="none" *ngIf="!googleAuth.signedInEmail()">
+      <ion-label>
+        Not signed in. Stays signed in for about an hour once you do (or until you close the
+        browser tab) - you'll also be prompted automatically the first time you tap "Submit
+        reading" if needed.
+      </ion-label>
+    </ion-item>
+
+    <ion-item lines="none">
+      <ion-button
+        *ngIf="!googleAuth.signedInEmail()"
+        fill="outline"
+        [disabled]="signingIn"
+        (click)="signInWithGoogle()"
+      >
+        Sign in with Google
+      </ion-button>
+      <ion-button *ngIf="googleAuth.signedInEmail()" fill="clear" color="danger" (click)="signOutOfGoogle()">
+        Sign out
+      </ion-button>
+    </ion-item>
+  </ion-list>
 </ion-content>

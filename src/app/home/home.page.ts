@@ -4,11 +4,21 @@ import { Router } from '@angular/router';
 import { MeterSettings } from '../models/meter-settings.model';
 import { SettingsService } from '../services/settings';
 import { DocxTemplateService } from '../services/docx-template';
-import { ShareService } from '../services/share';
+import { GoogleAuthService, NotSignedInError } from '../services/google-auth';
+import { GmailSendService } from '../services/gmail-send';
 import { extForMime } from '../util/mime.util';
 
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+interface BuiltSubmission {
+  settings: MeterSettings;
+  subject: string;
+  body: string;
+  docxBlob: Blob;
+  docxFilename: string;
+  imageFilename: string;
+}
 
 @Component({
   selector: 'app-home',
@@ -26,7 +36,8 @@ export class HomePage implements OnInit {
   constructor(
     private settingsService: SettingsService,
     private docxTemplateService: DocxTemplateService,
-    private shareService: ShareService,
+    private googleAuthService: GoogleAuthService,
+    private gmailSendService: GmailSendService,
     private alertController: AlertController,
     private loadingController: LoadingController,
     private toastController: ToastController,
@@ -90,12 +101,48 @@ export class HomePage implements OnInit {
     this.router.navigateByUrl('/settings');
   }
 
-  async submit() {
-    if (!this.settings) {
+  /**
+   * Primary action: sends the reading automatically via the signed-in Google
+   * account. ensureAccessToken() is called as the very first async step,
+   * right after (synchronous) validation and before anything else - Google's
+   * consent dialog must originate from a real, still-fresh user gesture (this
+   * click) or the browser's popup blocker kills it silently.
+   */
+  submit(): Promise<void> {
+    return this.withValidatedForm(async (settings, file) => {
+      const token = await this.googleAuthService.ensureAccessToken();
+      await this.withLoading(async () => {
+        const built = await this.buildSubmission(settings, file);
+        await this.gmailSendService.sendEmail(token, {
+          to: built.settings.recipientEmail,
+          bcc: built.settings.bccList || undefined,
+          subject: built.subject,
+          body: built.body,
+          attachments: [
+            { filename: built.imageFilename, mimeType: file.type, blob: file },
+            { filename: built.docxFilename, mimeType: DOCX_MIME, blob: built.docxBlob },
+          ],
+        });
+        await this.presentToast(`Email sent to ${built.settings.recipientEmail}.`, 'success');
+        this.resetForm();
+      });
+    });
+  }
+
+  /**
+   * Validates the form (synchronously, so no Google dialog is shown for an
+   * incomplete one), then hands the already-narrowed settings/file to
+   * `action` - shared by both submit paths so neither duplicates validation.
+   */
+  private async withValidatedForm(
+    action: (settings: MeterSettings, file: File) => Promise<void>
+  ): Promise<void> {
+    const settings = this.settings;
+    if (!settings) {
       return;
     }
 
-    if (!this.settingsComplete) {
+    if (!this.settingsService.isComplete(settings)) {
       const alert = await this.alertController.create({
         header: 'Settings needed',
         message:
@@ -114,77 +161,74 @@ export class HomePage implements OnInit {
       return;
     }
 
-    if (!this.selectedFile) {
+    const file = this.selectedFile;
+    if (!file) {
       await this.presentToast('Please attach a photo or PDF of the meter.', 'danger');
       return;
     }
 
-    const loading = await this.loadingController.create({
-      message: 'Preparing document…',
-    });
+    try {
+      await action(settings, file);
+    } catch (err) {
+      await this.handleSubmitError(err);
+    }
+  }
+
+  /** Shows the loading overlay for the duration of `action`, always dismissing it after. */
+  private async withLoading<T>(action: () => Promise<T>): Promise<T> {
+    const loading = await this.loadingController.create({ message: 'Preparing document…' });
     loading.present();
     this.submitting = true;
-
     try {
-      const settings = this.settings;
-      const today = formatReadingDate(new Date());
-      const formattedReading = this.formattedReadingPreview;
-
-      const body = buildEmailBody({
-        today,
-        formattedReading,
-        settings,
-      });
-
-      const docxBlob = await this.docxTemplateService.fillTemplate({
-        DATE: today,
-        READING: formattedReading,
-        PORTION: settings.portion,
-        ACCOUNT_NUMBER: settings.accountNumber,
-        CONTACT_NUMBER: settings.contactNumber,
-        EMAIL: settings.submitterEmail || '(unavailable)',
-        ACCOUNT_HOLDER: settings.accountHolder,
-        ADDRESS: settings.homeAddress,
-      });
-
-      const docxFilename = `Meter Readings - ${today}.docx`;
-
-      const imageExt = extForMime(this.selectedFile.type) || fallbackExt(this.selectedFile.name);
-      const imageFilename = `${settings.accountNumber} - ${today}${imageExt}`;
-
-      const subject = `${settings.accountNumber} - Meter readings ${today}`;
-
-      loading.dismiss();
-
-      const outcome = await this.shareService.shareOrDownload(
-        [
-          { blob: this.selectedFile, filename: imageFilename, mimeType: this.selectedFile.type },
-          { blob: docxBlob, filename: docxFilename, mimeType: DOCX_MIME },
-        ],
-        subject,
-        body,
-        settings.recipientEmail
-      );
-
-      if (outcome === 'shared') {
-        await this.presentToast('Files handed off to your share sheet.', 'success');
-      } else {
-        await this.presentToast(
-          `Files downloaded. Attach them to an email to ${settings.recipientEmail}.`,
-          'warning',
-          4000
-        );
-      }
-
-      this.readingText = '';
-      this.clearFile();
-    } catch (err) {
-      loading.dismiss();
-      const message = err instanceof Error ? err.message : 'Something went wrong.';
-      await this.presentToast(message, 'danger');
+      return await action();
     } finally {
+      loading.dismiss();
       this.submitting = false;
     }
+  }
+
+  private async buildSubmission(settings: MeterSettings, file: File): Promise<BuiltSubmission> {
+    const today = formatReadingDate(new Date());
+    const formattedReading = this.formattedReadingPreview;
+
+    const body = buildEmailBody({ today, formattedReading, settings });
+
+    const docxBlob = await this.docxTemplateService.fillTemplate({
+      DATE: today,
+      READING: formattedReading,
+      PORTION: settings.portion,
+      ACCOUNT_NUMBER: settings.accountNumber,
+      CONTACT_NUMBER: settings.contactNumber,
+      EMAIL: settings.submitterEmail || '(unavailable)',
+      ACCOUNT_HOLDER: settings.accountHolder,
+      ADDRESS: settings.homeAddress,
+    });
+
+    const docxFilename = `Meter Readings - ${today}.docx`;
+    const imageExt = extForMime(file.type) || fallbackExt(file.name);
+    const imageFilename = `${settings.accountNumber} - ${today}${imageExt}`;
+    const subject = `${settings.accountNumber} - Meter readings ${today}`;
+
+    return { settings, subject, body, docxBlob, docxFilename, imageFilename };
+  }
+
+  private async handleSubmitError(err: unknown): Promise<void> {
+    if (err instanceof NotSignedInError) {
+      const alert = await this.alertController.create({
+        header: 'Google sign-in needed',
+        message: 'The Google sign-in prompt was closed or failed. Tap "Submit reading" to try again.',
+        buttons: ['OK'],
+      });
+      alert.present();
+      return;
+    }
+    const message = err instanceof Error ? err.message : 'Something went wrong.';
+    await this.presentToast(message, 'danger');
+  }
+
+  private resetForm(): void {
+    this.readingText = '';
+    this.clearFile();
   }
 
   private async presentToast(

@@ -6,6 +6,7 @@
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
+    "serve:mobile": "ng serve --host 0.0.0.0 --ssl --disable-host-check",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
@@ -24,7 +25,6 @@
     "@angular/service-worker": "20.3.25",
     "@ionic/angular": "^8.0.0",
     "docxtemplater": "^3.69.3",
-    "file-saver": "^2.0.5",
     "ionicons": "^7.0.0",
     "pizzip": "^3.2.0",
     "rxjs": "~7.8.0",
@@ -42,7 +42,6 @@
     "@angular/compiler-cli": "20.3.25",
     "@angular/language-service": "20.3.25",
     "@ionic/angular-toolkit": "^12.0.0",
-    "@types/file-saver": "^2.0.7",
     "@types/jasmine": "~5.1.0",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
