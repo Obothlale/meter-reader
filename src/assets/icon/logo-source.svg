@@ -1,0 +1,20 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Full-bleed background: safe for maskable icons (Android adaptive icon masking, etc.) -->
+  <rect width="512" height="512" fill="#3880ff"/>
+
+  <!-- Gauge face -->
+  <circle cx="256" cy="256" r="150" fill="#ffffff"/>
+
+  <!-- Tick marks: half-dial sweep from left, through top, to right -->
+  <g stroke="#12356b" stroke-width="9" stroke-linecap="round">
+    <line x1="106" y1="256" x2="131" y2="256"/>
+    <line x1="149.9" y1="149.9" x2="167.6" y2="167.6"/>
+    <line x1="256" y1="106" x2="256" y2="131"/>
+    <line x1="362.1" y1="149.9" x2="344.4" y2="167.6"/>
+    <line x1="406" y1="256" x2="381" y2="256"/>
+  </g>
+
+  <!-- Needle -->
+  <polygon points="303.9,124.4 270.5,245.3 251.7,238.5" fill="#e6433c"/>
+  <circle cx="256" cy="256" r="18" fill="#e6433c"/>
+</svg>
