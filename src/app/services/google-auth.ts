@@ -8,6 +8,17 @@ const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo';
 // Treat a token as expired slightly before Google actually invalidates it, so a
 // send in progress can't race an expiry mid-request.
 const EXPIRY_SAFETY_MARGIN_MS = 60_000;
+// sessionStorage (not localStorage): the token still expires on its own within
+// ~1 hour and only grants gmail.send + userinfo.email, and this additionally
+// clears the moment the tab closes - a deliberately bounded trade of a bit of
+// XSS exposure width for not re-prompting on every page reload.
+const STORAGE_KEY = 'meter-reader.google-auth';
+
+interface StoredToken {
+  accessToken: string;
+  tokenExpiresAt: number;
+  email: string | null;
+}
 
 export class NotSignedInError extends Error {
   constructor(message = 'Not signed in with Google.') {
@@ -25,33 +36,44 @@ export class GoogleAuthService {
   private tokenClient: GoogleTokenClient | null = null;
   private accessToken: string | null = null;
   private tokenExpiresAt = 0;
-  private hasEverSignedIn = false;
   private pending: { resolve: () => void; reject: (err: Error) => void } | null = null;
 
-  /** Interactive sign-in - shows the Google consent prompt. */
+  constructor() {
+    this.restoreFromSession();
+  }
+
+  /**
+   * Interactive sign-in - shows the Google consent dialog. Google Identity
+   * Services' token client has no silent, no-gesture mode ("due to security
+   * concerns, only the dialog UX is supported" - Google's own docs); every
+   * call must originate from a real user gesture (e.g. a click), or the
+   * browser's popup blocker silently kills it. For a returning, already
+   * -authorized user the dialog is brief (no account picker), but it can
+   * never be skipped entirely without a server-held refresh token, which
+   * this deliberately backend-free design doesn't have.
+   */
   async signIn(): Promise<void> {
-    await this.requestToken(undefined);
+    await this.requestToken();
     await this.loadSignedInEmail();
   }
 
   /**
-   * Returns a valid access token for the current user, refreshing it if needed.
-   * Throws NotSignedInError if the user has never signed in, or a silent
-   * refresh isn't possible and interactive sign-in is required.
+   * Returns a valid access token, prompting via the Google dialog if the
+   * cached one is missing or expired. Must be called from within a real
+   * user gesture's call chain (e.g. as the first async step of a button
+   * click handler) so the resulting dialog isn't blocked as a popup.
+   * Throws NotSignedInError if the dialog is dismissed or fails.
    */
   async ensureAccessToken(): Promise<string> {
     if (this.hasValidToken()) {
       return this.accessToken!;
     }
-    if (this.hasEverSignedIn) {
-      try {
-        await this.requestToken('');
-        return this.accessToken!;
-      } catch {
-        // Silent refresh failed - fall through to NotSignedInError below.
-      }
+    try {
+      await this.requestToken();
+      return this.accessToken!;
+    } catch {
+      throw new NotSignedInError();
     }
-    throw new NotSignedInError();
   }
 
   signOut(): void {
@@ -60,19 +82,50 @@ export class GoogleAuthService {
     }
     this.accessToken = null;
     this.tokenExpiresAt = 0;
-    this.hasEverSignedIn = false;
     this.signedInEmail.set(null);
+    sessionStorage.removeItem(STORAGE_KEY);
   }
 
   private hasValidToken(): boolean {
     return !!this.accessToken && Date.now() < this.tokenExpiresAt;
   }
 
-  private async requestToken(prompt: string | undefined): Promise<void> {
+  private restoreFromSession(): void {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return;
+    }
+    try {
+      const stored = JSON.parse(raw) as StoredToken;
+      if (Date.now() >= stored.tokenExpiresAt) {
+        sessionStorage.removeItem(STORAGE_KEY);
+        return;
+      }
+      this.accessToken = stored.accessToken;
+      this.tokenExpiresAt = stored.tokenExpiresAt;
+      this.signedInEmail.set(stored.email);
+    } catch {
+      sessionStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  private persistToSession(): void {
+    if (!this.accessToken) {
+      return;
+    }
+    const stored: StoredToken = {
+      accessToken: this.accessToken,
+      tokenExpiresAt: this.tokenExpiresAt,
+      email: this.signedInEmail(),
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+  }
+
+  private async requestToken(): Promise<void> {
     const client = await this.getTokenClient();
     return new Promise<void>((resolve, reject) => {
       this.pending = { resolve, reject };
-      client.requestAccessToken(prompt === undefined ? undefined : { prompt });
+      client.requestAccessToken();
     });
   }
 
@@ -98,7 +151,7 @@ export class GoogleAuthService {
     }
     this.accessToken = response.access_token;
     this.tokenExpiresAt = Date.now() + response.expires_in * 1000 - EXPIRY_SAFETY_MARGIN_MS;
-    this.hasEverSignedIn = true;
+    this.persistToSession();
     pending?.resolve();
   }
 
@@ -115,6 +168,7 @@ export class GoogleAuthService {
       }
       const info = (await response.json()) as { email?: string };
       this.signedInEmail.set(info.email ?? null);
+      this.persistToSession();
     } catch {
       // Non-fatal - sign-in already succeeded even if we can't show the email.
     }

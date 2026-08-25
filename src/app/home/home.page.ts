@@ -4,7 +4,6 @@ import { Router } from '@angular/router';
 import { MeterSettings } from '../models/meter-settings.model';
 import { SettingsService } from '../services/settings';
 import { DocxTemplateService } from '../services/docx-template';
-import { ShareService } from '../services/share';
 import { GoogleAuthService, NotSignedInError } from '../services/google-auth';
 import { GmailSendService } from '../services/gmail-send';
 import { extForMime } from '../util/mime.util';
@@ -37,7 +36,6 @@ export class HomePage implements OnInit {
   constructor(
     private settingsService: SettingsService,
     private docxTemplateService: DocxTemplateService,
-    private shareService: ShareService,
     private googleAuthService: GoogleAuthService,
     private gmailSendService: GmailSendService,
     private alertController: AlertController,
@@ -103,58 +101,41 @@ export class HomePage implements OnInit {
     this.router.navigateByUrl('/settings');
   }
 
-  /** Primary action: sends the reading automatically via the signed-in Google account. */
+  /**
+   * Primary action: sends the reading automatically via the signed-in Google
+   * account. ensureAccessToken() is called as the very first async step,
+   * right after (synchronous) validation and before anything else - Google's
+   * consent dialog must originate from a real, still-fresh user gesture (this
+   * click) or the browser's popup blocker kills it silently.
+   */
   submit(): Promise<void> {
-    return this.withBuiltSubmission(async (built, file) => {
+    return this.withValidatedForm(async (settings, file) => {
       const token = await this.googleAuthService.ensureAccessToken();
-      await this.gmailSendService.sendEmail(token, {
-        to: built.settings.recipientEmail,
-        bcc: built.settings.bccList || undefined,
-        subject: built.subject,
-        body: built.body,
-        attachments: [
-          { filename: built.imageFilename, mimeType: file.type, blob: file },
-          { filename: built.docxFilename, mimeType: DOCX_MIME, blob: built.docxBlob },
-        ],
+      await this.withLoading(async () => {
+        const built = await this.buildSubmission(settings, file);
+        await this.gmailSendService.sendEmail(token, {
+          to: built.settings.recipientEmail,
+          bcc: built.settings.bccList || undefined,
+          subject: built.subject,
+          body: built.body,
+          attachments: [
+            { filename: built.imageFilename, mimeType: file.type, blob: file },
+            { filename: built.docxFilename, mimeType: DOCX_MIME, blob: built.docxBlob },
+          ],
+        });
+        await this.presentToast(`Email sent to ${built.settings.recipientEmail}.`, 'success');
+        this.resetForm();
       });
-      await this.presentToast(`Email sent to ${built.settings.recipientEmail}.`, 'success');
-      this.resetForm();
-    });
-  }
-
-  /** Fallback action: hands the files to the OS share sheet, or downloads + opens a mailto: draft. */
-  shareOrDownloadInstead(): Promise<void> {
-    return this.withBuiltSubmission(async (built, file) => {
-      const outcome = await this.shareService.shareOrDownload(
-        [
-          { blob: file, filename: built.imageFilename, mimeType: file.type },
-          { blob: built.docxBlob, filename: built.docxFilename, mimeType: DOCX_MIME },
-        ],
-        built.subject,
-        built.body,
-        built.settings.recipientEmail
-      );
-
-      if (outcome === 'shared') {
-        await this.presentToast('Files handed off to your share sheet.', 'success');
-      } else {
-        await this.presentToast(
-          `Files downloaded. Attach them to an email to ${built.settings.recipientEmail}.`,
-          'warning',
-          4000
-        );
-      }
-      this.resetForm();
     });
   }
 
   /**
-   * Validates the form, builds the subject/body/docx once, then hands it to
-   * `action` - shared by both the Google auto-send and share/download paths
-   * so neither duplicates the validation or document-building logic.
+   * Validates the form (synchronously, so no Google dialog is shown for an
+   * incomplete one), then hands the already-narrowed settings/file to
+   * `action` - shared by both submit paths so neither duplicates validation.
    */
-  private async withBuiltSubmission(
-    action: (built: BuiltSubmission, file: File) => Promise<void>
+  private async withValidatedForm(
+    action: (settings: MeterSettings, file: File) => Promise<void>
   ): Promise<void> {
     const settings = this.settings;
     if (!settings) {
@@ -186,20 +167,22 @@ export class HomePage implements OnInit {
       return;
     }
 
-    const loading = await this.loadingController.create({
-      message: 'Preparing document…',
-    });
+    try {
+      await action(settings, file);
+    } catch (err) {
+      await this.handleSubmitError(err);
+    }
+  }
+
+  /** Shows the loading overlay for the duration of `action`, always dismissing it after. */
+  private async withLoading<T>(action: () => Promise<T>): Promise<T> {
+    const loading = await this.loadingController.create({ message: 'Preparing document…' });
     loading.present();
     this.submitting = true;
-
     try {
-      const built = await this.buildSubmission(settings, file);
-      loading.dismiss();
-      await action(built, file);
-    } catch (err) {
-      loading.dismiss();
-      await this.handleSubmitError(err);
+      return await action();
     } finally {
+      loading.dismiss();
       this.submitting = false;
     }
   }
@@ -232,13 +215,9 @@ export class HomePage implements OnInit {
   private async handleSubmitError(err: unknown): Promise<void> {
     if (err instanceof NotSignedInError) {
       const alert = await this.alertController.create({
-        header: 'Sign in required',
-        message:
-          'Sign in with Google in Settings to send readings automatically, or use "Share / Download instead" below.',
-        buttons: [
-          { text: 'Cancel', role: 'cancel' },
-          { text: 'Go to settings', handler: () => this.goToSettings() },
-        ],
+        header: 'Google sign-in needed',
+        message: 'The Google sign-in prompt was closed or failed. Tap "Submit reading" to try again.',
+        buttons: ['OK'],
       });
       alert.present();
       return;
