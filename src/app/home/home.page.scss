@@ -1,11 +1,66 @@
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.setup-card {
+  border-radius: 12px;
+
+  .setup-card-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    ion-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-size: 22px;
+    }
+
+    p {
+      margin: 0;
+    }
+  }
+
+  ion-button {
+    margin-top: 4px;
+    --padding-start: 0;
+  }
+}
+
 .recipient-item {
   --background: transparent;
   --padding-start: 0;
 }
 
+// Flat, top-level selector - nesting ::ng-deep inside a parent SCSS block
+// breaks Angular's scoping-attribute injection, which would otherwise leak
+// this rule to every .native-input in the app instead of just this one.
+// !important is needed to outrank Ionic's own internal styles for .native-input.
+.reading-input ::ng-deep .native-input {
+  font-family: 'Courier New', Consolas, monospace !important;
+  font-size: 28px !important;
+  font-weight: 600 !important;
+  letter-spacing: 6px !important;
+  text-align: center !important;
+}
+
 .reading-preview {
   margin: 4px 16px 16px;
   color: var(--ion-color-medium);
+}
+
+.submit-button {
+  height: 52px;
+  font-weight: 600;
+  --border-radius: 10px;
 }
 
 .file-source-buttons {
