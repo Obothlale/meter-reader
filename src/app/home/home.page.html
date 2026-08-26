@@ -1,6 +1,11 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
-    <ion-title>Meter Readings Capture</ion-title>
+    <ion-title>
+      <div class="brand">
+        <img src="assets/icon/favicon.png" alt="" class="brand-logo" />
+        <span>Meter Readings Capture</span>
+      </div>
+    </ion-title>
     <ion-buttons slot="end">
       <ion-button (click)="goToSettings()">
         <ion-icon slot="icon-only" name="settings-outline"></ion-icon>
@@ -10,15 +15,24 @@
 </ion-header>
 
 <ion-content [fullscreen]="true" class="ion-padding">
-  <ion-card *ngIf="!settingsComplete" color="warning">
+  <ion-card *ngIf="!settingsComplete" color="warning" class="setup-card">
     <ion-card-content>
-      Account details aren't set up yet.
-      <a (click)="goToSettings()">Open Settings</a> to add the account number,
-      account holder and recipient email before submitting a reading.
+      <div class="setup-card-row">
+        <ion-icon name="alert-circle-outline"></ion-icon>
+        <p>
+          Account details aren't set up yet. Add the account number, account holder and
+          recipient email before submitting a reading.
+        </p>
+      </div>
+      <ion-button fill="clear" size="small" (click)="goToSettings()">
+        Open Settings
+        <ion-icon slot="end" name="arrow-forward-outline"></ion-icon>
+      </ion-button>
     </ion-card-content>
   </ion-card>
 
   <ion-item lines="none" class="recipient-item" *ngIf="settings?.recipientEmail as recipient">
+    <ion-icon slot="start" name="mail-outline" color="medium"></ion-icon>
     <ion-label>
       Will be sent to<br />
       <strong>{{ recipient }}</strong>
@@ -34,6 +48,7 @@
         [(ngModel)]="readingText"
         maxlength="6"
         placeholder="e.g. 012345"
+        class="reading-input"
       ></ion-input>
     </ion-item>
   </ion-list>
@@ -87,7 +102,8 @@
   </ion-item>
 
   <div class="ion-padding-top">
-    <ion-button expand="block" [disabled]="submitting" (click)="submit()">
+    <ion-button expand="block" [disabled]="submitting" (click)="submit()" class="submit-button">
+      <ion-icon slot="start" name="send-outline"></ion-icon>
       Submit reading
     </ion-button>
   </div>
